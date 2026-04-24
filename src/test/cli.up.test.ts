@@ -84,6 +84,23 @@ describe('Dev Containers CLI', function () {
 			});
 		});
 
+		describe('for image with forwardPorts', () => {
+			let upResult: UpResult | null = null;
+			const testFolder = `${__dirname}/configs/image-with-forward-ports`;
+			before(async () => {
+				upResult = await devContainerUp(cli, testFolder);
+			});
+			after(async () => await devContainerDown({ containerId: upResult?.containerId }));
+
+			it('should publish ports listed in forwardPorts', async () => {
+				const details = JSON.parse((await shellExec(`docker inspect ${upResult!.containerId}`)).stdout)[0] as ContainerDetails;
+				const bindings = details.NetworkSettings.Ports['9002/tcp'];
+				assert.ok(bindings && bindings.length > 0, 'Expected 9002/tcp to be published.');
+				assert.equal(bindings![0].HostIp, '127.0.0.1');
+				assert.equal(bindings![0].HostPort, '9002');
+			});
+		});
+
 		// docker-compose variations _without_ features are here (under 'up' tests)
 		// docker-compose variations _with_ features are under 'exec' to test features are installed
 		describe('for docker-compose with image without features', () => {
