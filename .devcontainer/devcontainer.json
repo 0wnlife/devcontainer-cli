@@ -6,8 +6,8 @@
 	"name": "Dev Containers CLI",
 	"build": {
 		"dockerfile": "Dockerfile",
-		"args": { 
-			"VARIANT": "20-bookworm"
+		"args": {
+			"VARIANT": "24-bookworm"
 		}
 	},
 	"mounts": [
@@ -18,11 +18,11 @@
 	"postCreateCommand": "yarn install",
 
 	"remoteUser": "node",
-	
+
 	"features": {
 		"ghcr.io/devcontainers/features/docker-in-docker:2": {}
 	},
-	
+
 	"customizations": {
 		"vscode": {
 			"extensions": [
