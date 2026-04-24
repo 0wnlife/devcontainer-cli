@@ -18,7 +18,7 @@ This CLI is in active development. Current status:
 - [x] `devcontainer features <...>` - Tools to assist in authoring and testing [Dev Container Features](https://containers.dev/implementors/features/)
 - [x] `devcontainer templates <...>` - Tools to assist in authoring and testing [Dev Container Templates](https://containers.dev/implementors/templates/)
 - [x] `devcontainer stop` - Stops containers
-- [ ] `devcontainer down` - Stops and deletes containers
+- [x] `devcontainer down` - Stops and deletes containers
 
 ## Try it out
 

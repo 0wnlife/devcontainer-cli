@@ -16,7 +16,7 @@ import { ContainerError } from '../spec-common/errors';
 import { Log, LogDimensions, LogLevel, makeLog, mapLogLevel } from '../spec-utils/log';
 import { probeRemoteEnv, runLifecycleHooks, runRemoteCommand, UserEnvProbe, setupInContainer } from '../spec-common/injectHeadless';
 import { extendImage } from './containerFeatures';
-import { dockerCLI, DockerCLIParameters, dockerComposeCLI, dockerPtyCLI, inspectContainer, stopContainer } from '../spec-shutdown/dockerUtils';
+import { dockerCLI, DockerCLIParameters, dockerComposeCLI, dockerPtyCLI, inspectContainer, removeContainer, stopContainer } from '../spec-shutdown/dockerUtils';
 import { buildAndExtendDockerCompose, dockerComposeCLIConfig, getDefaultImageName, getProjectName, readDockerComposeConfig, readVersionPrefix } from './dockerCompose';
 import { DevContainerFromDockerComposeConfig, DevContainerFromDockerfileConfig, getDockerComposeFilePaths } from '../spec-configuration/configuration';
 import { workspaceFromPath } from '../spec-utils/workspaces';
@@ -90,6 +90,7 @@ const mountRegex = /^type=(bind|volume),source=([^,]+),target=([^,]+)(?:,externa
 		y.command('generate-docs', 'Generate documentation', templatesGenerateDocsOptions, templatesGenerateDocsHandler);
 	});
 	y.command('stop', 'Stop a running dev container', stopOptions, stopHandler);
+	y.command('down', 'Stop and remove a dev container', downOptions, downHandler);
 	y.command(restArgs ? ['exec', '*'] : ['exec <cmd> [args..]'], 'Execute a command on a running dev container', execOptions, execHandler);
 	y.epilog(`devcontainer@${version} ${packageFolder}`);
 	y.parse(restArgs ? argv.slice(1) : argv);
@@ -1354,6 +1355,135 @@ async function doStop({
 		const originalStack = originalError?.stack;
 		const err = originalError instanceof ContainerError ? originalError : new ContainerError({
 			description: 'An error occurred stopping the container.',
+			originalError
+		});
+		if (originalStack) {
+			console.error(originalStack);
+		}
+		return {
+			outcome: 'error' as 'error',
+			message: err.message,
+			description: err.description,
+			dispose,
+		};
+	}
+}
+
+function downOptions(y: Argv) {
+	return shutdownOptions(y, 'Id of the container to stop and remove.');
+}
+
+type DownArgs = UnpackArgv<ReturnType<typeof downOptions>>;
+
+function downHandler(args: DownArgs) {
+	runAsyncHandler(down.bind(null, args));
+}
+
+async function down(args: DownArgs) {
+	const result = await doDown(args);
+	const exitCode = result.outcome === 'error' ? 1 : 0;
+	await new Promise<void>((resolve, reject) => {
+		process.stdout.write(JSON.stringify(result) + '\n', err => err ? reject(err) : resolve());
+	});
+	await result.dispose();
+	process.exit(exitCode);
+}
+
+async function doDown({
+	'user-data-folder': persistedFolder,
+	'docker-path': dockerPath,
+	'docker-compose-path': dockerComposePath,
+	'workspace-folder': workspaceFolderArg,
+	'mount-workspace-git-root': mountWorkspaceGitRoot,
+	'mount-git-worktree-common-dir': mountGitWorktreeCommonDir,
+	'container-id': containerId,
+	'id-label': idLabel,
+	config: configParam,
+	'override-config': overrideConfig,
+	'log-level': logLevel,
+	'log-format': logFormat,
+}: DownArgs) {
+	const disposables: (() => Promise<unknown> | undefined)[] = [];
+	const dispose = async () => {
+		await Promise.all(disposables.map(d => d()));
+	};
+	try {
+		const workspaceFolder = workspaceFolderArg ? path.resolve(process.cwd(), workspaceFolderArg) : undefined;
+		const providedIdLabels = idLabel ? Array.isArray(idLabel) ? idLabel as string[] : [idLabel] : undefined;
+		const configFile = configParam ? URI.file(path.resolve(process.cwd(), configParam)) : undefined;
+		const overrideConfigFile = overrideConfig ? URI.file(path.resolve(process.cwd(), overrideConfig)) : undefined;
+		const params = await createDockerParams({
+			dockerPath,
+			dockerComposePath,
+			containerDataFolder: undefined,
+			containerSystemDataFolder: undefined,
+			workspaceFolder,
+			mountWorkspaceGitRoot,
+			mountGitWorktreeCommonDir,
+			configFile,
+			overrideConfigFile,
+			logLevel: mapLogLevel(logLevel),
+			logFormat,
+			log: text => process.stderr.write(text),
+			terminalDimensions: undefined,
+			defaultUserEnvProbe: defaultDefaultUserEnvProbe,
+			removeExistingContainer: false,
+			buildNoCache: false,
+			expectExistingContainer: false,
+			postCreateEnabled: false,
+			skipNonBlocking: false,
+			prebuild: false,
+			persistedFolder,
+			additionalMounts: [],
+			updateRemoteUserUIDDefault: 'never',
+			remoteEnv: {},
+			additionalCacheFroms: [],
+			useBuildKit: 'auto',
+			omitLoggerHeader: true,
+			buildxPlatform: undefined,
+			buildxPush: false,
+			additionalLabels: [],
+			buildxCacheTo: undefined,
+			skipFeatureAutoMapping: false,
+			buildxOutput: undefined,
+			skipPostAttach: true,
+			skipPersistingCustomizationsFromFeatures: false,
+			dotfiles: {},
+		}, disposables);
+
+		const { common } = params;
+		const { cliHost } = common;
+		const workspace = workspaceFolder ? workspaceFromPath(cliHost.path, workspaceFolder) : undefined;
+		const configPath = configFile ? configFile : workspace
+			? (await getDevContainerConfigPathIn(cliHost, workspace.configFolderPath)
+				|| (overrideConfigFile ? getDefaultDevContainerConfigPath(cliHost, workspace.configFolderPath) : undefined))
+			: overrideConfigFile;
+
+		const { container } = await findContainerAndIdLabels(params, containerId, providedIdLabels, workspaceFolder, configPath?.fsPath);
+		if (!container) {
+			bailOut(common.output, 'Dev container not found.');
+		}
+
+		const composeProjectName = container.Config.Labels?.['com.docker.compose.project'];
+		if (composeProjectName) {
+			await dockerComposeCLI(params, '--project-name', composeProjectName, 'down');
+			return {
+				outcome: 'success' as 'success',
+				composeProjectName,
+				dispose,
+			};
+		}
+		await stopContainer(params, container.Id);
+		await removeContainer(params, container.Id);
+		return {
+			outcome: 'success' as 'success',
+			containerId: container.Id,
+			dispose,
+		};
+	} catch (originalError) {
+		const originalStack = originalError?.stack;
+		const err = originalError instanceof ContainerError ? originalError : new ContainerError({
+			description: 'An error occurred stopping and removing the container.',
 			originalError
 		});
 		if (originalStack) {
