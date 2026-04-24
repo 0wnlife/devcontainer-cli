@@ -17,7 +17,7 @@ This CLI is in active development. Current status:
 - [x] `devcontainer exec` - Executes a command in a container with `userEnvProbe`, `remoteUser`, `remoteEnv`, and other properties applied
 - [x] `devcontainer features <...>` - Tools to assist in authoring and testing [Dev Container Features](https://containers.dev/implementors/features/)
 - [x] `devcontainer templates <...>` - Tools to assist in authoring and testing [Dev Container Templates](https://containers.dev/implementors/templates/)
-- [ ] `devcontainer stop` - Stops containers
+- [x] `devcontainer stop` - Stops containers
 - [ ] `devcontainer down` - Stops and deletes containers
 
 ## Try it out

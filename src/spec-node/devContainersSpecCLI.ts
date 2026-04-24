@@ -16,7 +16,7 @@ import { ContainerError } from '../spec-common/errors';
 import { Log, LogDimensions, LogLevel, makeLog, mapLogLevel } from '../spec-utils/log';
 import { probeRemoteEnv, runLifecycleHooks, runRemoteCommand, UserEnvProbe, setupInContainer } from '../spec-common/injectHeadless';
 import { extendImage } from './containerFeatures';
-import { dockerCLI, DockerCLIParameters, dockerPtyCLI, inspectContainer } from '../spec-shutdown/dockerUtils';
+import { dockerCLI, DockerCLIParameters, dockerComposeCLI, dockerPtyCLI, inspectContainer, stopContainer } from '../spec-shutdown/dockerUtils';
 import { buildAndExtendDockerCompose, dockerComposeCLIConfig, getDefaultImageName, getProjectName, readDockerComposeConfig, readVersionPrefix } from './dockerCompose';
 import { DevContainerFromDockerComposeConfig, DevContainerFromDockerfileConfig, getDockerComposeFilePaths } from '../spec-configuration/configuration';
 import { workspaceFromPath } from '../spec-utils/workspaces';
@@ -89,6 +89,7 @@ const mountRegex = /^type=(bind|volume),source=([^,]+),target=([^,]+)(?:,externa
 		y.command('metadata <templateId>', 'Fetch a published Template\'s metadata', templateMetadataOptions, templateMetadataHandler);
 		y.command('generate-docs', 'Generate documentation', templatesGenerateDocsOptions, templatesGenerateDocsHandler);
 	});
+	y.command('stop', 'Stop a running dev container', stopOptions, stopHandler);
 	y.command(restArgs ? ['exec', '*'] : ['exec <cmd> [args..]'], 'Execute a command on a running dev container', execOptions, execHandler);
 	y.epilog(`devcontainer@${version} ${packageFolder}`);
 	y.parse(restArgs ? argv.slice(1) : argv);
@@ -1210,6 +1211,161 @@ async function outdated({
 	}
 	await dispose();
 	process.exit(0);
+}
+
+function shutdownOptions(y: Argv, containerIdDescription: string) {
+	return y.options({
+		'user-data-folder': { type: 'string', description: 'Host path to a directory that is intended to be persisted and share state between sessions.' },
+		'docker-path': { type: 'string', description: 'Docker CLI path.' },
+		'docker-compose-path': { type: 'string', description: 'Docker Compose CLI path.' },
+		'workspace-folder': { type: 'string', description: 'Workspace folder path. The devcontainer.json will be looked up relative to this path. If --container-id, --id-label, and --workspace-folder are not provided, this defaults to the current directory.' },
+		'mount-workspace-git-root': { type: 'boolean', default: true, description: 'Mount the workspace using its Git root.' },
+		'mount-git-worktree-common-dir': { type: 'boolean', default: false, description: 'Mount the Git worktree common dir for Git operations to work in the container. This requires the worktree to be created with relative paths (`git worktree add --relative-paths`).' },
+		'container-id': { type: 'string', description: containerIdDescription },
+		'id-label': { type: 'string', description: 'Id label(s) of the format name=value. If no --container-id is given the id labels will be used to look up the container. If no --id-label is given, one will be inferred from the --workspace-folder path.' },
+		'config': { type: 'string', description: 'devcontainer.json path. The default is to use .devcontainer/devcontainer.json or, if that does not exist, .devcontainer.json in the workspace folder.' },
+		'override-config': { type: 'string', description: 'devcontainer.json path to override any devcontainer.json in the workspace folder (or built-in configuration). This is required when there is no devcontainer.json otherwise.' },
+		'log-level': { choices: ['info' as 'info', 'debug' as 'debug', 'trace' as 'trace'], default: 'info' as 'info', description: 'Log level.' },
+		'log-format': { choices: ['text' as 'text', 'json' as 'json'], default: 'text' as 'text', description: 'Log format.' },
+	})
+		.check(argv => {
+			const idLabels = (argv['id-label'] && (Array.isArray(argv['id-label']) ? argv['id-label'] : [argv['id-label']])) as string[] | undefined;
+			if (idLabels?.some(idLabel => !/.+=.+/.test(idLabel))) {
+				throw new Error('Unmatched argument format: id-label must match <name>=<value>');
+			}
+			if (!argv['container-id'] && !idLabels?.length && !argv['workspace-folder']) {
+				argv['workspace-folder'] = process.cwd();
+			}
+			return true;
+		});
+}
+
+function stopOptions(y: Argv) {
+	return shutdownOptions(y, 'Id of the container to stop.');
+}
+
+type StopArgs = UnpackArgv<ReturnType<typeof stopOptions>>;
+
+function stopHandler(args: StopArgs) {
+	runAsyncHandler(stop.bind(null, args));
+}
+
+async function stop(args: StopArgs) {
+	const result = await doStop(args);
+	const exitCode = result.outcome === 'error' ? 1 : 0;
+	await new Promise<void>((resolve, reject) => {
+		process.stdout.write(JSON.stringify(result) + '\n', err => err ? reject(err) : resolve());
+	});
+	await result.dispose();
+	process.exit(exitCode);
+}
+
+async function doStop({
+	'user-data-folder': persistedFolder,
+	'docker-path': dockerPath,
+	'docker-compose-path': dockerComposePath,
+	'workspace-folder': workspaceFolderArg,
+	'mount-workspace-git-root': mountWorkspaceGitRoot,
+	'mount-git-worktree-common-dir': mountGitWorktreeCommonDir,
+	'container-id': containerId,
+	'id-label': idLabel,
+	config: configParam,
+	'override-config': overrideConfig,
+	'log-level': logLevel,
+	'log-format': logFormat,
+}: StopArgs) {
+	const disposables: (() => Promise<unknown> | undefined)[] = [];
+	const dispose = async () => {
+		await Promise.all(disposables.map(d => d()));
+	};
+	try {
+		const workspaceFolder = workspaceFolderArg ? path.resolve(process.cwd(), workspaceFolderArg) : undefined;
+		const providedIdLabels = idLabel ? Array.isArray(idLabel) ? idLabel as string[] : [idLabel] : undefined;
+		const configFile = configParam ? URI.file(path.resolve(process.cwd(), configParam)) : undefined;
+		const overrideConfigFile = overrideConfig ? URI.file(path.resolve(process.cwd(), overrideConfig)) : undefined;
+		const params = await createDockerParams({
+			dockerPath,
+			dockerComposePath,
+			containerDataFolder: undefined,
+			containerSystemDataFolder: undefined,
+			workspaceFolder,
+			mountWorkspaceGitRoot,
+			mountGitWorktreeCommonDir,
+			configFile,
+			overrideConfigFile,
+			logLevel: mapLogLevel(logLevel),
+			logFormat,
+			log: text => process.stderr.write(text),
+			terminalDimensions: undefined,
+			defaultUserEnvProbe: defaultDefaultUserEnvProbe,
+			removeExistingContainer: false,
+			buildNoCache: false,
+			expectExistingContainer: false,
+			postCreateEnabled: false,
+			skipNonBlocking: false,
+			prebuild: false,
+			persistedFolder,
+			additionalMounts: [],
+			updateRemoteUserUIDDefault: 'never',
+			remoteEnv: {},
+			additionalCacheFroms: [],
+			useBuildKit: 'auto',
+			omitLoggerHeader: true,
+			buildxPlatform: undefined,
+			buildxPush: false,
+			additionalLabels: [],
+			buildxCacheTo: undefined,
+			skipFeatureAutoMapping: false,
+			buildxOutput: undefined,
+			skipPostAttach: true,
+			skipPersistingCustomizationsFromFeatures: false,
+			dotfiles: {},
+		}, disposables);
+
+		const { common } = params;
+		const { cliHost } = common;
+		const workspace = workspaceFolder ? workspaceFromPath(cliHost.path, workspaceFolder) : undefined;
+		const configPath = configFile ? configFile : workspace
+			? (await getDevContainerConfigPathIn(cliHost, workspace.configFolderPath)
+				|| (overrideConfigFile ? getDefaultDevContainerConfigPath(cliHost, workspace.configFolderPath) : undefined))
+			: overrideConfigFile;
+
+		const { container } = await findContainerAndIdLabels(params, containerId, providedIdLabels, workspaceFolder, configPath?.fsPath);
+		if (!container) {
+			bailOut(common.output, 'Dev container not found.');
+		}
+
+		const composeProjectName = container.Config.Labels?.['com.docker.compose.project'];
+		if (composeProjectName) {
+			await dockerComposeCLI(params, '--project-name', composeProjectName, 'stop');
+			return {
+				outcome: 'success' as 'success',
+				composeProjectName,
+				dispose,
+			};
+		}
+		await stopContainer(params, container.Id);
+		return {
+			outcome: 'success' as 'success',
+			containerId: container.Id,
+			dispose,
+		};
+	} catch (originalError) {
+		const originalStack = originalError?.stack;
+		const err = originalError instanceof ContainerError ? originalError : new ContainerError({
+			description: 'An error occurred stopping the container.',
+			originalError
+		});
+		if (originalStack) {
+			console.error(originalStack);
+		}
+		return {
+			outcome: 'error' as 'error',
+			message: err.message,
+			description: err.description,
+			dispose,
+		};
+	}
 }
 
 function execOptions(y: Argv) {

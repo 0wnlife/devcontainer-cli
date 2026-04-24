@@ -40,5 +40,29 @@ describe('Dev Containers CLI using Podman', function () {
 			assert.ok(containerId, 'Container id not found.');
 			await shellExec(`podman rm -f ${containerId}`);
 		});
+
+		describe('Command stop on podman', () => {
+			let containerId: string | null = null;
+			const testFolder = `${__dirname}/configs/image`;
+			before(async () => {
+				const res = await shellExec(`${cli} up --docker-path podman --workspace-folder ${testFolder}`);
+				const response = JSON.parse(res.stdout);
+				assert.equal(response.outcome, 'success');
+				containerId = response.containerId;
+				assert.ok(containerId, 'Container id not found.');
+			});
+			after(async () => {
+				if (containerId) {
+					await shellExec(`podman rm -f ${containerId}`, undefined, undefined, true);
+				}
+			});
+
+			it('should stop the running container without removing it', async () => {
+				const res = await shellExec(`${cli} stop --docker-path podman --workspace-folder ${testFolder}`);
+				assert.equal(JSON.parse(res.stdout).outcome, 'success');
+				const details = JSON.parse((await shellExec(`podman inspect ${containerId}`)).stdout)[0];
+				assert.notEqual(details.State.Status, 'running');
+			});
+		});
 	});
 });
