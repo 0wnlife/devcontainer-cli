@@ -41,11 +41,10 @@ describe('Dev Containers CLI using Podman', function () {
 			await shellExec(`podman rm -f ${containerId}`);
 		});
 
-		describe('Command stop on podman', () => {
+		describe('for image with forwardPorts on podman', () => {
 			let containerId: string | null = null;
-			const testFolder = `${__dirname}/configs/image`;
 			before(async () => {
-				const res = await shellExec(`${cli} up --docker-path podman --workspace-folder ${testFolder}`);
+				const res = await shellExec(`${cli} up --docker-path podman --workspace-folder ${__dirname}/configs/image-with-forward-ports`);
 				const response = JSON.parse(res.stdout);
 				assert.equal(response.outcome, 'success');
 				containerId = response.containerId;
@@ -57,10 +56,10 @@ describe('Dev Containers CLI using Podman', function () {
 				}
 			});
 
-			it('should apply the configured container name', async () => {
+			it('should publish ports listed in forwardPorts', async () => {
 				const details = JSON.parse((await shellExec(`podman inspect ${containerId}`)).stdout)[0];
-				// podman's inspect returns Name without the leading slash that docker includes.
-				assert.equal(details.Name, 'devcontainer-test-name');
+				const bindings = details.NetworkSettings?.Ports?.['9002/tcp'];
+				assert.ok(bindings && bindings.length > 0, 'Expected 9002/tcp to be published.');
 			});
 		});
     
@@ -84,6 +83,29 @@ describe('Dev Containers CLI using Podman', function () {
 				assert.equal(JSON.parse(res.stdout).outcome, 'success');
 				const details = JSON.parse((await shellExec(`podman inspect ${containerId}`)).stdout)[0];
 				assert.notEqual(details.State.Status, 'running');
+			});
+		});
+
+		describe('Command stop on podman', () => {
+			let containerId: string | null = null;
+			const testFolder = `${__dirname}/configs/image`;
+			before(async () => {
+				const res = await shellExec(`${cli} up --docker-path podman --workspace-folder ${testFolder}`);
+				const response = JSON.parse(res.stdout);
+				assert.equal(response.outcome, 'success');
+				containerId = response.containerId;
+				assert.ok(containerId, 'Container id not found.');
+			});
+			after(async () => {
+				if (containerId) {
+					await shellExec(`podman rm -f ${containerId}`);
+				}
+			});
+
+			it('should apply the configured container name', async () => {
+				const details = JSON.parse((await shellExec(`podman inspect ${containerId}`)).stdout)[0];
+				// podman's inspect returns Name without the leading slash that docker includes.
+				assert.equal(details.Name, 'devcontainer-test-name');
 			});
 		});
 
