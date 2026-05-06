@@ -4,7 +4,7 @@ This guide covers everything you need to set up a development environment, build
 
 ## Prerequisites
 
-- [Node.js](https://nodejs.org/) >= 20
+- [Node.js](https://nodejs.org/) >= 24
 - [Docker](https://www.docker.com/) (required for running integration tests — they create real containers)
 - [Git](https://git-scm.com/)
 - [yarn](https://yarnpkg.com/) (used for dependency installation)
@@ -30,7 +30,7 @@ You are ready to build and test.
 
 ### Option B: Local setup
 
-1. Install Node.js >= 20 and Docker.
+1. Install Node.js >= 24 and Docker.
 2. Install dependencies:
 
     ```sh

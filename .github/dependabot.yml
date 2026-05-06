@@ -20,7 +20,7 @@ updates:
       - dependency-name: "@types/chai"
         update-types: ["version-update:semver-major"] # chai 4 to avoid esm
       - dependency-name: "@types/node"
-        update-types: ["version-update:semver-major"] # Keep Node 20 compatibility
+        update-types: ["version-update:semver-major"] # Keep Node 24 compatibility
       - dependency-name: "chai"
         update-types: ["version-update:semver-major"] # chai 4 to avoid esm
       - dependency-name: "yargs"

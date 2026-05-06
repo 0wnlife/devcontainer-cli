@@ -8,7 +8,7 @@
 # Options:
 #   --prefix DIR        Installation directory (default: ~/.devcontainers)
 #   --version VER       Dev Containers CLI version to install (default: latest)
-#   --node-version VER  Node.js major version (default: 20)
+#   --node-version VER  Node.js major version (default: 24)
 #   --update            Update existing installation to latest versions
 #   --uninstall         Remove the installation
 #   --help              Show this help message
@@ -21,7 +21,7 @@ set -e
 # Default configuration
 INSTALL_PREFIX="${DEVCONTAINERS_INSTALL_DIR:-$HOME/.devcontainers}"
 CLI_VERSION="latest"
-NODE_MAJOR_VERSION="20"
+NODE_MAJOR_VERSION="24"
 UPDATE_MODE=false
 UNINSTALL_MODE=false
 
@@ -68,7 +68,7 @@ Usage:
 Options:
   --prefix DIR        Installation directory (default: ~/.devcontainers)
   --version VER       Dev Containers CLI version to install (default: latest)
-  --node-version VER  Node.js major version (default: 20)
+  --node-version VER  Node.js major version (default: 24)
   --update            Update existing installation to latest versions
   --uninstall         Remove the installation
   --help              Show this help message
