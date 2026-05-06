@@ -6,7 +6,7 @@
 import { createPlainLog, LogLevel, makeLog } from '../spec-utils/log';
 import { inspectImageInRegistry, qualifyImageName } from '../spec-node/utils';
 import assert from 'assert';
-import { dockerCLI, listContainers, PartialExecParameters, removeContainer, toExecParameters } from '../spec-shutdown/dockerUtils';
+import { ContainerDetails, dockerCLI, listContainers, PartialExecParameters, removeContainer, stopContainer, toExecParameters } from '../spec-shutdown/dockerUtils';
 import { createCLIParams } from './testUtils';
 
 export const output = makeLog(createPlainLog(text => process.stdout.write(text), () => LogLevel.Trace));
@@ -47,6 +47,21 @@ describe('Docker utils', function () {
 		assert.strictEqual(qualifyImageName('docker.io/ubuntu'), 'docker.io/library/ubuntu');
 		assert.strictEqual(qualifyImageName('random/image'), 'docker.io/random/image');
 		assert.strictEqual(qualifyImageName('foo/random/image'), 'foo/random/image');
+	});
+
+	it('stops a running container without removing it', async () => {
+		const params = await createCLIParams(__dirname);
+		const execParams = { ...toExecParameters(params), output: makeLog(output, LogLevel.Info), print: 'continuous' as 'continuous' };
+		const { stdout } = await dockerCLI(execParams, 'run', '-d', 'ubuntu:latest', 'sleep', 'inf');
+		const containerId = stdout.toString().trim();
+		try {
+			await stopContainer(execParams, containerId);
+			const inspect = await dockerCLI(execParams, 'inspect', containerId);
+			const details = JSON.parse(inspect.stdout.toString())[0] as ContainerDetails;
+			assert.notStrictEqual(details.State.Status, 'running');
+		} finally {
+			await dockerCLI(execParams, 'rm', '-f', containerId);
+		}
 	});
 
 	it('protects against concurrent removal', async () => {

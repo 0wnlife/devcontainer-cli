@@ -170,6 +170,19 @@ export async function listContainers(params: DockerCLIParameters | PartialExecPa
 		.filter(s => !!s);
 }
 
+export interface StopContainerOptions {
+	timeoutSeconds?: number;
+}
+
+export async function stopContainer(params: DockerCLIParameters | PartialExecParameters | DockerResolverParameters, nameOrId: string, options: StopContainerOptions = {}) {
+	const args = ['stop'];
+	if (options.timeoutSeconds !== undefined) {
+		args.push('-t', String(options.timeoutSeconds));
+	}
+	args.push(nameOrId);
+	await dockerCLI(params, ...args);
+}
+
 export async function removeContainer(params: DockerCLIParameters | PartialExecParameters | DockerResolverParameters, nameOrId: string) {
 	let eventsProcess: Exec | undefined;
 	let removedSeenP: Promise<void> | undefined;

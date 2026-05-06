@@ -41,10 +41,11 @@ describe('Dev Containers CLI using Podman', function () {
 			await shellExec(`podman rm -f ${containerId}`);
 		});
 
-		describe('for image with name on podman', () => {
+		describe('Command stop on podman', () => {
 			let containerId: string | null = null;
+			const testFolder = `${__dirname}/configs/image`;
 			before(async () => {
-				const res = await shellExec(`${cli} up --docker-path podman --workspace-folder ${__dirname}/configs/image-with-name`);
+				const res = await shellExec(`${cli} up --docker-path podman --workspace-folder ${testFolder}`);
 				const response = JSON.parse(res.stdout);
 				assert.equal(response.outcome, 'success');
 				containerId = response.containerId;
@@ -62,6 +63,52 @@ describe('Dev Containers CLI using Podman', function () {
 				assert.equal(details.Name, 'devcontainer-test-name');
 			});
 		});
+    
+		describe('for image with name on podman', () => {
+			let containerId: string | null = null;
+			before(async () => {
+				const res = await shellExec(`${cli} up --docker-path podman --workspace-folder ${__dirname}/configs/image-with-name`);
+				const response = JSON.parse(res.stdout);
+				assert.equal(response.outcome, 'success');
+				containerId = response.containerId;
+				assert.ok(containerId, 'Container id not found.');
+			});
+			after(async () => {
+				if (containerId) {
+					await shellExec(`podman rm -f ${containerId}`, undefined, undefined, true);
+				}
+			});
 
+			it('should stop the running container without removing it', async () => {
+				const res = await shellExec(`${cli} stop --docker-path podman --workspace-folder ${testFolder}`);
+				assert.equal(JSON.parse(res.stdout).outcome, 'success');
+				const details = JSON.parse((await shellExec(`podman inspect ${containerId}`)).stdout)[0];
+				assert.notEqual(details.State.Status, 'running');
+			});
+		});
+
+		describe('Command down on podman', () => {
+			let containerId: string | null = null;
+			const testFolder = `${__dirname}/configs/image`;
+			before(async () => {
+				const res = await shellExec(`${cli} up --docker-path podman --workspace-folder ${testFolder}`);
+				const response = JSON.parse(res.stdout);
+				assert.equal(response.outcome, 'success');
+				containerId = response.containerId;
+				assert.ok(containerId, 'Container id not found.');
+			});
+			after(async () => {
+				if (containerId) {
+					await shellExec(`podman rm -f ${containerId}`, undefined, undefined, true);
+				}
+			});
+
+			it('should stop and remove the running container', async () => {
+				const res = await shellExec(`${cli} down --docker-path podman --workspace-folder ${testFolder}`);
+				assert.equal(JSON.parse(res.stdout).outcome, 'success');
+				const listing = await shellExec(`podman ps -a --filter id=${containerId} --format '{{.ID}}'`);
+				assert.equal(listing.stdout.trim(), '', 'Container should have been removed.');
+			});
+		});
 	});
 });

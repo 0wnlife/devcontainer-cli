@@ -12,6 +12,7 @@ import { FeaturesTestCommandInput } from './test';
 import { cpDirectoryLocal, rmLocal } from '../../spec-utils/pfs';
 import { nullLog } from '../../spec-utils/log';
 import { runCommandNoPty } from '../../spec-common/commonUtils';
+import { removeContainer } from '../../spec-shutdown/dockerUtils';
 import { Feature } from '../../spec-configuration/containerFeaturesConfiguration';
 import { getSafeId } from '../containerFeatures';
 
@@ -86,7 +87,7 @@ async function cleanup(cliHost: CLIHost) {
 	log(`Cleaning up ${containerIds.length} test containers...`, { prefix: '🧹', info: true });
 	for (const containerId of containerIds) {
 		log(`Removing container ${containerId}...`, { prefix: '🧹', info: true });
-		await cliHost.exec({ cmd: 'docker', args: ['rm', '-f', containerId], output: nullLog });
+		await removeContainer({ cmd: 'docker', exec: cliHost.exec, env: cliHost.env, output: nullLog }, containerId);
 	}
 }
 

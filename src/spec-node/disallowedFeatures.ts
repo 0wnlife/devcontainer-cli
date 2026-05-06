@@ -4,7 +4,7 @@
 
 import { DevContainerConfig } from '../spec-configuration/configuration';
 import { ContainerError } from '../spec-common/errors';
-import { DockerCLIParameters, dockerCLI } from '../spec-shutdown/dockerUtils';
+import { DockerCLIParameters, stopContainer } from '../spec-shutdown/dockerUtils';
 import { findDevContainer } from './singleContainer';
 import { DevContainerControlManifest, DisallowedFeature, getControlManifest } from '../spec-configuration/controlManifest';
 import { getCacheFolder } from './utils';
@@ -31,7 +31,7 @@ export async function ensureNoDisallowedFeatures(params: DockerCLIParameters, co
 	if (idLabels) {
 		const container = await findDevContainer(params, idLabels);
 		if (container?.State?.Status === 'running') {
-			await dockerCLI(params, 'stop', '-t', '0', container.Id);
+			await stopContainer(params, container.Id, { timeoutSeconds: 0 });
 			stopped = true;
 		}
 	}
