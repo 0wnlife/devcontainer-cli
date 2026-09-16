@@ -2,6 +2,16 @@
 
 Notable changes.
 
+## August 2026
+
+### [0.89.0]
+- Add opt-in OCI authentication hardening with `--oci-auth-hardening`, trusted cross-origin authentication host mappings, and diagnostics for measuring compatibility impact. (https://github.com/devcontainers/cli/pull/1278)
+
+## June 2026
+
+### [0.88.0]
+- Add WSLc support (https://github.com/devcontainers/cli/pull/1249)
+
 ## May 2026
 
 ### [0.87.0]

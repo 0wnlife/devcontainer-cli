@@ -61,10 +61,11 @@ jobs:
           "src/test/cli.podman.test.ts",
           "src/test/cli.test.ts",
           "src/test/cli.up.test.ts",
+          "src/test/httpOCIRegistry.test.ts",
           "src/test/imageMetadata.test.ts",
           "src/test/container-features/containerFeaturesOCIPush.test.ts",
           # Run all except the above:
-          "--exclude src/test/container-features/containerFeaturesOrder.test.ts --exclude src/test/container-features/registryCompatibilityOCI.test.ts --exclude src/test/container-features/containerFeaturesOCIPush.test.ts --exclude src/test/container-features/e2e.test.ts --exclude src/test/container-features/featuresCLICommands.test.ts --exclude src/test/cli.build.test.ts --exclude src/test/cli.exec.buildKit.1.test.ts --exclude src/test/cli.exec.buildKit.2.test.ts --exclude src/test/cli.exec.nonBuildKit.1.test.ts --exclude src/test/cli.exec.nonBuildKit.2.test.ts --exclude src/test/cli.podman.test.ts --exclude src/test/cli.test.ts --exclude src/test/cli.up.test.ts --exclude src/test/imageMetadata.test.ts 'src/test/**/*.test.ts'",
+          "--exclude src/test/container-features/containerFeaturesOrder.test.ts --exclude src/test/container-features/registryCompatibilityOCI.test.ts --exclude src/test/container-features/containerFeaturesOCIPush.test.ts --exclude src/test/container-features/e2e.test.ts --exclude src/test/container-features/featuresCLICommands.test.ts --exclude src/test/cli.build.test.ts --exclude src/test/cli.exec.buildKit.1.test.ts --exclude src/test/cli.exec.buildKit.2.test.ts --exclude src/test/cli.exec.nonBuildKit.1.test.ts --exclude src/test/cli.exec.nonBuildKit.2.test.ts --exclude src/test/cli.podman.test.ts --exclude src/test/cli.test.ts --exclude src/test/cli.up.test.ts --exclude src/test/httpOCIRegistry.test.ts --exclude src/test/imageMetadata.test.ts 'src/test/**/*.test.ts'",
         ]
     steps:
     - name: Checkout
@@ -89,6 +90,19 @@ jobs:
         fi
         cat "$DAEMON_JSON"
         sudo systemctl restart docker
+    - name: Install Podman 5.5.2
+      if: matrix.mocha-args == 'src/test/cli.podman.test.ts'
+      run: |
+        docker build \
+          --build-arg PODMAN_VERSION=v5.5.2 \
+          --target podman \
+          --tag podman-5.5.2-builder \
+          'https://github.com/mgoltzsche/podman-static.git#9ccf992536ecf0a4a3b82ac27fc708f00ab141ab'
+        container_id=$(docker create podman-5.5.2-builder)
+        docker cp "${container_id}:/usr/local/bin/podman" podman
+        docker rm "${container_id}"
+        sudo install -m 0755 podman /usr/local/bin/podman
+        podman --version
     - name: Tools Info
       run: |
         docker info

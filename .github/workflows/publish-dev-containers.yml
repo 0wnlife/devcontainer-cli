@@ -8,6 +8,7 @@ on:
 permissions:
   contents: read
   actions: read
+  id-token: write
 
 jobs:
   main:
@@ -46,5 +47,3 @@ jobs:
         path: .
     - name: Publish TGZ
       run: npm publish ${TGZ} --access public
-      env:
-        NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
